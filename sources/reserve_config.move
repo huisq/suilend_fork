@@ -1,5 +1,5 @@
-module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::reserve_config {
-    struct ReserveConfig has store {
+module suilend::reserve_config {
+    public struct ReserveConfig has store {
         open_ltv_pct: u8,
         close_ltv_pct: u8,
         max_close_ltv_pct: u8,
@@ -21,12 +21,12 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::reser
         additional_fields: 0x2::bag::Bag,
     }
     
-    struct ReserveConfigBuilder has store {
+    public struct ReserveConfigBuilder has store {
         fields: 0x2::bag::Bag,
     }
     
     public fun from(arg0: &ReserveConfig, arg1: &mut 0x2::tx_context::TxContext) : ReserveConfigBuilder {
-        let v0 = ReserveConfigBuilder{fields: 0x2::bag::new(arg1)};
+        let mut v0 = ReserveConfigBuilder{fields: 0x2::bag::new(arg1)};
         set_open_ltv_pct(&mut v0, arg0.open_ltv_pct);
         set_close_ltv_pct(&mut v0, arg0.close_ltv_pct);
         set_max_close_ltv_pct(&mut v0, arg0.max_close_ltv_pct);
@@ -48,8 +48,8 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::reser
         v0
     }
     
-    public fun borrow_fee(arg0: &ReserveConfig) : 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal {
-        0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from_bps(arg0.borrow_fee_bps)
+    public fun borrow_fee(arg0: &ReserveConfig) : suilend::decimal::Decimal {
+        suilend::decimal::from_bps(arg0.borrow_fee_bps)
     }
     
     public fun borrow_limit(arg0: &ReserveConfig) : u64 {
@@ -60,37 +60,56 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::reser
         arg0.borrow_limit_usd
     }
     
-    public fun borrow_weight(arg0: &ReserveConfig) : 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal {
-        0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from_bps(arg0.borrow_weight_bps)
+    public fun borrow_weight(arg0: &ReserveConfig) : suilend::decimal::Decimal {
+        suilend::decimal::from_bps(arg0.borrow_weight_bps)
     }
     
     public fun build(arg0: ReserveConfigBuilder, arg1: &mut 0x2::tx_context::TxContext) : ReserveConfig {
         let ReserveConfigBuilder { fields: v0 } = arg0;
         0x2::bag::destroy_empty(v0);
-        create_reserve_config(0x2::bag::remove<vector<u8>, u8>(&mut arg0.fields, b"open_ltv_pct"), 0x2::bag::remove<vector<u8>, u8>(&mut arg0.fields, b"close_ltv_pct"), 0x2::bag::remove<vector<u8>, u8>(&mut arg0.fields, b"max_close_ltv_pct"), 0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"borrow_weight_bps"), 0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"deposit_limit"), 0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"borrow_limit"), 0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"liquidation_bonus_bps"), 0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"max_liquidation_bonus_bps"), 0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"deposit_limit_usd"), 0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"borrow_limit_usd"), 0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"borrow_fee_bps"), 0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"spread_fee_bps"), 0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"protocol_liquidation_fee_bps"), 0x2::bag::remove<vector<u8>, vector<u8>>(&mut arg0.fields, b"interest_rate_utils"), 0x2::bag::remove<vector<u8>, vector<u64>>(&mut arg0.fields, b"interest_rate_aprs"), 0x2::bag::remove<vector<u8>, bool>(&mut arg0.fields, b"isolated"), 0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"open_attributed_borrow_limit_usd"), 0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"close_attributed_borrow_limit_usd"), arg1)
+        create_reserve_config(
+            0x2::bag::remove<vector<u8>, u8>(&mut arg0.fields, b"open_ltv_pct"), 
+            0x2::bag::remove<vector<u8>, u8>(&mut arg0.fields, b"close_ltv_pct"), 
+            0x2::bag::remove<vector<u8>, u8>(&mut arg0.fields, b"max_close_ltv_pct"), 
+            0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"borrow_weight_bps"), 
+            0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"deposit_limit"), 
+            0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"borrow_limit"), 
+            0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"liquidation_bonus_bps"), 
+            0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"max_liquidation_bonus_bps"), 
+            0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"deposit_limit_usd"), 
+            0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"borrow_limit_usd"), 
+            0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"borrow_fee_bps"), 
+            0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"spread_fee_bps"), 
+            0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"protocol_liquidation_fee_bps"), 
+            0x2::bag::remove<vector<u8>, vector<u8>>(&mut arg0.fields, b"interest_rate_utils"), 
+            0x2::bag::remove<vector<u8>, vector<u64>>(&mut arg0.fields, b"interest_rate_aprs"), 
+            0x2::bag::remove<vector<u8>, bool>(&mut arg0.fields, b"isolated"), 
+            0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"open_attributed_borrow_limit_usd"), 
+            0x2::bag::remove<vector<u8>, u64>(&mut arg0.fields, b"close_attributed_borrow_limit_usd"), 
+            arg1)
     }
     
-    public fun calculate_apr(arg0: &ReserveConfig, arg1: 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal) : 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal {
-        assert!(0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::le(arg1, 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(1)), 1);
+    public fun calculate_apr(arg0: &ReserveConfig, arg1: suilend::decimal::Decimal) : suilend::decimal::Decimal {
+        assert!(suilend::decimal::le(arg1, suilend::decimal::from(1)), 1);
         let v0 = 1;
         while (v0 < 0x1::vector::length<u8>(&arg0.interest_rate_utils)) {
-            let v1 = 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from_percent(*0x1::vector::borrow<u8>(&arg0.interest_rate_utils, v0 - 1));
-            let v2 = 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from_percent(*0x1::vector::borrow<u8>(&arg0.interest_rate_utils, v0));
-            if (0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::ge(arg1, v1) && 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::le(arg1, v2)) {
-                let v3 = 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from_bps(*0x1::vector::borrow<u64>(&arg0.interest_rate_aprs, v0 - 1));
-                return 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::add(v3, 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::mul(0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::div(0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::sub(arg1, v1), 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::sub(v2, v1)), 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::sub(0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from_bps(*0x1::vector::borrow<u64>(&arg0.interest_rate_aprs, v0)), v3)))
+            let v1 = suilend::decimal::from_percent(*0x1::vector::borrow<u8>(&arg0.interest_rate_utils, v0 - 1));
+            let v2 = suilend::decimal::from_percent(*0x1::vector::borrow<u8>(&arg0.interest_rate_utils, v0));
+            if (suilend::decimal::ge(arg1, v1) && suilend::decimal::le(arg1, v2)) {
+                let v3 = suilend::decimal::from_bps(*0x1::vector::borrow<u64>(&arg0.interest_rate_aprs, v0 - 1));
+                return suilend::decimal::add(v3, suilend::decimal::mul(suilend::decimal::div(suilend::decimal::sub(arg1, v1), suilend::decimal::sub(v2, v1)), suilend::decimal::sub(suilend::decimal::from_bps(*0x1::vector::borrow<u64>(&arg0.interest_rate_aprs, v0)), v3)))
             };
             v0 = v0 + 1;
         };
         abort 0
     }
     
-    public fun calculate_supply_apr(arg0: &ReserveConfig, arg1: 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal, arg2: 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal) : 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal {
-        0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::mul(0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::mul(0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::sub(0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(1), spread_fee(arg0)), arg2), arg1)
+    public fun calculate_supply_apr(arg0: &ReserveConfig, arg1: suilend::decimal::Decimal, arg2: suilend::decimal::Decimal) : suilend::decimal::Decimal {
+        suilend::decimal::mul(suilend::decimal::mul(suilend::decimal::sub(suilend::decimal::from(1), spread_fee(arg0)), arg2), arg1)
     }
     
-    public fun close_ltv(arg0: &ReserveConfig) : 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal {
-        0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from_percent(arg0.close_ltv_pct)
+    public fun close_ltv(arg0: &ReserveConfig) : suilend::decimal::Decimal {
+        suilend::decimal::from_percent(arg0.close_ltv_pct)
     }
     
     public fun create_reserve_config(arg0: u8, arg1: u8, arg2: u8, arg3: u64, arg4: u64, arg5: u64, arg6: u64, arg7: u64, arg8: u64, arg9: u64, arg10: u64, arg11: u64, arg12: u64, arg13: vector<u8>, arg14: vector<u64>, arg15: bool, arg16: u64, arg17: u64, arg18: &mut 0x2::tx_context::TxContext) : ReserveConfig {
@@ -156,16 +175,16 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::reser
         arg0.isolated
     }
     
-    public fun liquidation_bonus(arg0: &ReserveConfig) : 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal {
-        0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from_bps(arg0.liquidation_bonus_bps)
+    public fun liquidation_bonus(arg0: &ReserveConfig) : suilend::decimal::Decimal {
+        suilend::decimal::from_bps(arg0.liquidation_bonus_bps)
     }
     
-    public fun open_ltv(arg0: &ReserveConfig) : 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal {
-        0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from_percent(arg0.open_ltv_pct)
+    public fun open_ltv(arg0: &ReserveConfig) : suilend::decimal::Decimal {
+        suilend::decimal::from_percent(arg0.open_ltv_pct)
     }
     
-    public fun protocol_liquidation_fee(arg0: &ReserveConfig) : 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal {
-        0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from_bps(arg0.protocol_liquidation_fee_bps)
+    public fun protocol_liquidation_fee(arg0: &ReserveConfig) : suilend::decimal::Decimal {
+        suilend::decimal::from_bps(arg0.protocol_liquidation_fee_bps)
     }
     
     fun set<T0: copy + drop + store, T1: drop + store>(arg0: &mut ReserveConfigBuilder, arg1: T0, arg2: T1) {
@@ -248,8 +267,8 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::reser
         set<vector<u8>, u64>(arg0, b"spread_fee_bps", arg1);
     }
     
-    public fun spread_fee(arg0: &ReserveConfig) : 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal {
-        0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from_bps(arg0.spread_fee_bps)
+    public fun spread_fee(arg0: &ReserveConfig) : suilend::decimal::Decimal {
+        suilend::decimal::from_bps(arg0.spread_fee_bps)
     }
     
     fun validate_reserve_config(arg0: &ReserveConfig) {
@@ -276,7 +295,7 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::reser
         let v0 = 0x1::vector::length<u8>(arg0);
         assert!(*0x1::vector::borrow<u8>(arg0, 0) == 0, 0);
         assert!(*0x1::vector::borrow<u8>(arg0, v0 - 1) == 100, 0);
-        let v1 = 1;
+        let mut v1 = 1;
         while (v1 < v0) {
             assert!(*0x1::vector::borrow<u8>(arg0, v1 - 1) < *0x1::vector::borrow<u8>(arg0, v1), 0);
             assert!(*0x1::vector::borrow<u64>(arg1, v1 - 1) <= *0x1::vector::borrow<u64>(arg1, v1), 0);

@@ -1,46 +1,47 @@
-module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liquidity_mining {
-    struct PoolRewardManager has store, key {
+module suilend::liquidity_mining {
+    public struct PoolRewardManager has store, key {
         id: 0x2::object::UID,
         total_shares: u64,
         pool_rewards: vector<0x1::option::Option<PoolReward>>,
         last_update_time_ms: u64,
     }
     
-    struct PoolReward has store, key {
+    public struct PoolReward has store, key {
         id: 0x2::object::UID,
         pool_reward_manager_id: 0x2::object::ID,
         coin_type: 0x1::type_name::TypeName,
         start_time_ms: u64,
         end_time_ms: u64,
         total_rewards: u64,
-        allocated_rewards: 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal,
-        cumulative_rewards_per_share: 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal,
+        allocated_rewards: suilend::decimal::Decimal,
+        cumulative_rewards_per_share: suilend::decimal::Decimal,
         num_user_reward_managers: u64,
         additional_fields: 0x2::bag::Bag,
     }
     
-    struct RewardBalance<phantom T0> has copy, drop, store {
+    public struct RewardBalance<phantom T0> has copy, drop, store {
         dummy_field: bool,
     }
     
-    struct UserRewardManager has store {
+    public struct UserRewardManager has store {
         pool_reward_manager_id: 0x2::object::ID,
         share: u64,
         rewards: vector<0x1::option::Option<UserReward>>,
         last_update_time_ms: u64,
     }
     
-    struct UserReward has store {
+    public struct UserReward has store {
         pool_reward_id: 0x2::object::ID,
-        earned_rewards: 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal,
-        cumulative_rewards_per_share: 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::Decimal,
+        earned_rewards: suilend::decimal::Decimal,
+        cumulative_rewards_per_share: suilend::decimal::Decimal,
     }
     
-    public(friend) fun add_pool_reward<T0>(arg0: &mut PoolRewardManager, arg1: 0x2::balance::Balance<T0>, arg2: u64, arg3: u64, arg4: &0x2::clock::Clock, arg5: &mut 0x2::tx_context::TxContext) {
+    public(package) fun add_pool_reward<T0>(arg0: &mut PoolRewardManager, arg1: 0x2::balance::Balance<T0>, arg2: u64, arg3: u64, arg4: &0x2::clock::Clock, arg5: &mut 0x2::tx_context::TxContext) {
         let v0 = 0x2::math::max(arg2, 0x2::clock::timestamp_ms(arg4));
         assert!(arg3 - v0 >= 3600000, 1);
-        let v1 = 0x2::bag::new(arg5);
+        let mut v1 = 0x2::bag::new(arg5);
         let v2 = RewardBalance<T0>{dummy_field: false};
+        let total_rewards = 0x2::balance::value<T0>(&arg1);
         0x2::bag::add<RewardBalance<T0>, 0x2::balance::Balance<T0>>(&mut v1, v2, arg1);
         let v3 = PoolReward{
             id                           : 0x2::object::new(arg5), 
@@ -48,9 +49,9 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liqui
             coin_type                    : 0x1::type_name::get<T0>(), 
             start_time_ms                : v0, 
             end_time_ms                  : arg3, 
-            total_rewards                : 0x2::balance::value<T0>(&arg1), 
-            allocated_rewards            : 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(0), 
-            cumulative_rewards_per_share : 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(0), 
+            total_rewards                , 
+            allocated_rewards            : suilend::decimal::from(0), 
+            cumulative_rewards_per_share : suilend::decimal::from(0), 
             num_user_reward_managers     : 0, 
             additional_fields            : v1,
         };
@@ -59,29 +60,29 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liqui
         0x1::option::fill<PoolReward>(0x1::vector::borrow_mut<0x1::option::Option<PoolReward>>(&mut arg0.pool_rewards, v4), v3);
     }
     
-    public(friend) fun cancel_pool_reward<T0>(arg0: &mut PoolRewardManager, arg1: u64, arg2: &0x2::clock::Clock) : 0x2::balance::Balance<T0> {
+    public(package) fun cancel_pool_reward<T0>(arg0: &mut PoolRewardManager, arg1: u64, arg2: &0x2::clock::Clock) : 0x2::balance::Balance<T0> {
         update_pool_reward_manager(arg0, arg2);
         let v0 = 0x1::option::borrow_mut<PoolReward>(0x1::vector::borrow_mut<0x1::option::Option<PoolReward>>(&mut arg0.pool_rewards, arg1));
         v0.end_time_ms = 0x2::clock::timestamp_ms(arg2);
         v0.total_rewards = 0;
         let v1 = RewardBalance<T0>{dummy_field: false};
-        0x2::balance::split<T0>(0x2::bag::borrow_mut<RewardBalance<T0>, 0x2::balance::Balance<T0>>(&mut v0.additional_fields, v1), 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::floor(0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::sub(0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(v0.total_rewards), v0.allocated_rewards)))
+        0x2::balance::split<T0>(0x2::bag::borrow_mut<RewardBalance<T0>, 0x2::balance::Balance<T0>>(&mut v0.additional_fields, v1), suilend::decimal::floor(suilend::decimal::sub(suilend::decimal::from(v0.total_rewards), v0.allocated_rewards)))
     }
     
-    public(friend) fun change_user_reward_manager_share(arg0: &mut PoolRewardManager, arg1: &mut UserRewardManager, arg2: u64, arg3: &0x2::clock::Clock) {
+    public(package) fun change_user_reward_manager_share(arg0: &mut PoolRewardManager, arg1: &mut UserRewardManager, arg2: u64, arg3: &0x2::clock::Clock) {
         update_user_reward_manager(arg0, arg1, arg3);
         arg0.total_shares = arg0.total_shares - arg1.share + arg2;
         arg1.share = arg2;
     }
     
-    public(friend) fun claim_rewards<T0>(arg0: &mut PoolRewardManager, arg1: &mut UserRewardManager, arg2: &0x2::clock::Clock, arg3: u64) : 0x2::balance::Balance<T0> {
+    public(package) fun claim_rewards<T0>(arg0: &mut PoolRewardManager, arg1: &mut UserRewardManager, arg2: &0x2::clock::Clock, arg3: u64) : 0x2::balance::Balance<T0> {
         update_user_reward_manager(arg0, arg1, arg2);
         let v0 = 0x1::option::borrow_mut<PoolReward>(0x1::vector::borrow_mut<0x1::option::Option<PoolReward>>(&mut arg0.pool_rewards, arg3));
         assert!(v0.coin_type == 0x1::type_name::get<T0>(), 2);
         let v1 = 0x1::vector::borrow_mut<0x1::option::Option<UserReward>>(&mut arg1.rewards, arg3);
         let v2 = 0x1::option::borrow_mut<UserReward>(v1);
-        let v3 = 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::floor(v2.earned_rewards);
-        v2.earned_rewards = 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::sub(v2.earned_rewards, 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(v3));
+        let v3 = suilend::decimal::floor(v2.earned_rewards);
+        v2.earned_rewards = suilend::decimal::sub(v2.earned_rewards, suilend::decimal::from(v3));
         let v4 = RewardBalance<T0>{dummy_field: false};
         if (0x2::clock::timestamp_ms(arg2) >= v0.end_time_ms) {
             let UserReward {
@@ -94,7 +95,7 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liqui
         0x2::balance::split<T0>(0x2::bag::borrow_mut<RewardBalance<T0>, 0x2::balance::Balance<T0>>(&mut v0.additional_fields, v4), v3)
     }
     
-    public(friend) fun close_pool_reward<T0>(arg0: &mut PoolRewardManager, arg1: u64, arg2: &0x2::clock::Clock) : 0x2::balance::Balance<T0> {
+    public(package) fun close_pool_reward<T0>(arg0: &mut PoolRewardManager, arg1: u64, arg2: &0x2::clock::Clock) : 0x2::balance::Balance<T0> {
         let PoolReward {
             id                           : v0,
             pool_reward_manager_id       : _,
@@ -107,12 +108,13 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liqui
             num_user_reward_managers     : v8,
             additional_fields            : v9,
         } = 0x1::option::extract<PoolReward>(0x1::vector::borrow_mut<0x1::option::Option<PoolReward>>(&mut arg0.pool_rewards, arg1));
-        let v10 = v9;
+        let mut v10 = v9;
         0x2::object::delete(v0);
         assert!(0x2::clock::timestamp_ms(arg2) >= v4, 5);
         assert!(v8 == 0, 4);
         let v11 = RewardBalance<T0>{dummy_field: false};
         0x2::bag::destroy_empty(v10);
+        ///fix later
         0x2::bag::remove<RewardBalance<T0>, 0x2::balance::Balance<T0>>(&mut v10, v11)
     }
     
@@ -121,7 +123,7 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liqui
     }
     
     fun find_available_index(arg0: &mut PoolRewardManager) : u64 {
-        let v0 = 0;
+        let mut v0 = 0;
         while (v0 < 0x1::vector::length<0x1::option::Option<PoolReward>>(&arg0.pool_rewards)) {
             if (0x1::option::is_none<PoolReward>(0x1::vector::borrow<0x1::option::Option<PoolReward>>(&arg0.pool_rewards, v0))) {
                 return v0
@@ -136,7 +138,7 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liqui
         arg0.last_update_time_ms
     }
     
-    public(friend) fun new_pool_reward_manager(arg0: &mut 0x2::tx_context::TxContext) : PoolRewardManager {
+    public(package) fun new_pool_reward_manager(arg0: &mut 0x2::tx_context::TxContext) : PoolRewardManager {
         PoolRewardManager{
             id                  : 0x2::object::new(arg0), 
             total_shares        : 0, 
@@ -145,8 +147,8 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liqui
         }
     }
     
-    public(friend) fun new_user_reward_manager(arg0: &mut PoolRewardManager, arg1: &0x2::clock::Clock) : UserRewardManager {
-        let v0 = UserRewardManager{
+    public(package) fun new_user_reward_manager(arg0: &mut PoolRewardManager, arg1: &0x2::clock::Clock) : UserRewardManager {
+        let mut v0 = UserRewardManager{
             pool_reward_manager_id : 0x2::object::id<PoolRewardManager>(arg0), 
             share                  : 0, 
             rewards                : 0x1::vector::empty<0x1::option::Option<UserReward>>(), 
@@ -181,7 +183,7 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liqui
             arg0.last_update_time_ms = v0;
             return
         };
-        let v1 = 0;
+        let mut v1 = 0;
         while (v1 < 0x1::vector::length<0x1::option::Option<PoolReward>>(&arg0.pool_rewards)) {
             let v2 = 0x1::vector::borrow_mut<0x1::option::Option<PoolReward>>(&mut arg0.pool_rewards, v1);
             if (0x1::option::is_none<PoolReward>(v2)) {
@@ -193,9 +195,9 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liqui
                 v1 = v1 + 1;
                 continue
             };
-            let v4 = 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::div(0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::mul(0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(v3.total_rewards), 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(0x2::math::min(v0, v3.end_time_ms) - 0x2::math::max(v3.start_time_ms, arg0.last_update_time_ms))), 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(v3.end_time_ms - v3.start_time_ms));
-            v3.allocated_rewards = 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::add(v3.allocated_rewards, v4);
-            v3.cumulative_rewards_per_share = 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::add(v3.cumulative_rewards_per_share, 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::div(v4, 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(arg0.total_shares)));
+            let v4 = suilend::decimal::div(suilend::decimal::mul(suilend::decimal::from(v3.total_rewards), suilend::decimal::from(0x2::math::min(v0, v3.end_time_ms) - 0x2::math::max(v3.start_time_ms, arg0.last_update_time_ms))), suilend::decimal::from(v3.end_time_ms - v3.start_time_ms));
+            v3.allocated_rewards = suilend::decimal::add(v3.allocated_rewards, v4);
+            v3.cumulative_rewards_per_share = suilend::decimal::add(v3.cumulative_rewards_per_share, suilend::decimal::div(v4, suilend::decimal::from(arg0.total_shares)));
             v1 = v1 + 1;
         };
         arg0.last_update_time_ms = v0;
@@ -204,7 +206,7 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liqui
     fun update_user_reward_manager(arg0: &mut PoolRewardManager, arg1: &mut UserRewardManager, arg2: &0x2::clock::Clock) {
         assert!(0x2::object::id<PoolRewardManager>(arg0) == arg1.pool_reward_manager_id, 0);
         update_pool_reward_manager(arg0, arg2);
-        let v0 = 0;
+        let mut v0 = 0;
         while (v0 < 0x1::vector::length<0x1::option::Option<PoolReward>>(&arg0.pool_rewards)) {
             let v1 = 0x1::vector::borrow_mut<0x1::option::Option<PoolReward>>(&mut arg0.pool_rewards, v0);
             if (0x1::option::is_none<PoolReward>(v1)) {
@@ -219,9 +221,9 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liqui
             if (0x1::option::is_none<UserReward>(v3)) {
                 if (arg1.last_update_time_ms <= v2.end_time_ms) {
                     let v4 = if (arg1.last_update_time_ms <= v2.start_time_ms) {
-                        0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::mul(v2.cumulative_rewards_per_share, 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(arg1.share))
+                        suilend::decimal::mul(v2.cumulative_rewards_per_share, suilend::decimal::from(arg1.share))
                     } else {
-                        0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(0)
+                        suilend::decimal::from(0)
                     };
                     let v5 = UserReward{
                         pool_reward_id               : 0x2::object::id<PoolReward>(v2), 
@@ -233,7 +235,7 @@ module 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::liqui
                 };
             } else {
                 let v6 = 0x1::option::borrow_mut<UserReward>(v3);
-                v6.earned_rewards = 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::add(v6.earned_rewards, 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::mul(0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::sub(v2.cumulative_rewards_per_share, v6.cumulative_rewards_per_share), 0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::decimal::from(arg1.share)));
+                v6.earned_rewards = suilend::decimal::add(v6.earned_rewards, suilend::decimal::mul(suilend::decimal::sub(v2.cumulative_rewards_per_share, v6.cumulative_rewards_per_share), suilend::decimal::from(arg1.share)));
                 v6.cumulative_rewards_per_share = v2.cumulative_rewards_per_share;
             };
             v0 = v0 + 1;
