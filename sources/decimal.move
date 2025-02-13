@@ -80,14 +80,15 @@ module suilend::decimal {
     }
     
     public fun pow(arg0: Decimal, arg1: u64) : Decimal {
-        let v0 = arg0;
-        let v1 = from(1);
-        while (arg1 > 0) {
-            if (arg1 % 2 == 1) {
+        let mut v0 = arg0;
+        let mut v1 = from(1);
+        let mut v2 = arg1;
+        while (v2 > 0) {
+            if (v2 % 2 == 1) {
                 v1 = mul(v1, v0);
             };
             v0 = mul(v0, v0);
-            arg1 = arg1 / 2;
+            v2 = v2 / 2;
         };
         v1
     }

@@ -14,21 +14,21 @@ module suilend::lending_market_registry {
     }
     
     public fun create_lending_market<T0>(
-        arg0: &mut Registry, 
-        arg1: &mut TxContext
+        registry: &mut Registry, 
+        ctx: &mut TxContext
     ) : (LendingMarketOwnerCap<T0>, LendingMarket<T0>) {
-        assert!(arg0.version == 1, 1);
-        let (v0, v1) = lending_market::create_lending_market<T0>(arg1);
+        assert!(registry.version == 1, 1);
+        let (v0, v1) = lending_market::create_lending_market<T0>(ctx);
         let v2 = v1;
-        table::add<TypeName, ID>(&mut arg0.lending_markets, type_name::get<T0>(), object::id<LendingMarket<T0>>(&v2));
+        table::add<TypeName, ID>(&mut registry.lending_markets, type_name::get<T0>(), object::id<LendingMarket<T0>>(&v2));
         (v0, v2)
     }
     
-    fun init(arg0: &mut tx_context::TxContext) {
+    fun init(ctx: &mut tx_context::TxContext) {
         let v0 = Registry{
-            id              : object::new(arg0), 
+            id              : object::new(ctx), 
             version         : 1, 
-            lending_markets : table::new<TypeName, ID>(arg0),
+            lending_markets : table::new<TypeName, ID>(ctx),
         };
         transfer::share_object<Registry>(v0);
     }

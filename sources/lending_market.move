@@ -1,6 +1,7 @@
 module suilend::lending_market {
 
     use std::type_name::{Self, TypeName};
+    use sui::math;
     use sui::clock::{Self, Clock};
     use sui::coin::{Self, Coin};
     use sui::event;
@@ -123,62 +124,66 @@ module suilend::lending_market {
     }
     
     public fun borrow<T0, T1>(
-        arg0: &mut LendingMarket<T0>, 
-        arg1: u64, 
-        arg2: &ObligationOwnerCap<T0>, 
-        arg3: &Clock, 
-        arg4: u64, 
-        arg5: &mut TxContext
+        market: &mut LendingMarket<T0>, 
+        reserve_id: u64, 
+        obligation_cap: &ObligationOwnerCap<T0>, 
+        clock: &Clock, 
+        amount: u64, 
+        ctx: &mut TxContext
     ) : Coin<T1> {
-        assert!(arg0.version == 3, 1);
-        assert!(arg4 > 0, 2);
-        let v0 = object_table::borrow_mut<ID, Obligation<T0>>(&mut arg0.obligations, arg2.obligation_id);
-        obligation::refresh<T0>(v0, &mut arg0.reserves, arg3);
-        let v1 = vector::borrow_mut<Reserve<T0>>(&mut arg0.reserves, arg1);
-        assert!(reserve::coin_type<T0>(v1) == type_name::get<T1>(), 3);
-        reserve::compound_interest<T0>(v1, arg3);
-        reserve::assert_price_is_fresh<T0>(v1, arg3);
-        if (arg4 == 18446744073709551615) {
-            arg4 = max_borrow_amount<T0>(arg0.rate_limiter, v0, v1, arg3);
+        //TODO: fix version
+        assert!(market.version == 3, 1);
+        assert!(amount > 0, 2);
+        let lending_market_id = object::id_address<LendingMarket<T0>>(market);
+        let obligation = object_table::borrow_mut<ID, Obligation<T0>>(&mut market.obligations, obligation_cap.obligation_id);
+        obligation::refresh<T0>(obligation, &mut market.reserves, clock);
+        let reserve = vector::borrow_mut<Reserve<T0>>(&mut market.reserves, reserve_id);
+        assert!(reserve::coin_type<T0>(reserve) == type_name::get<T1>(), 3);
+        reserve::compound_interest<T0>(reserve, clock);
+        reserve::assert_price_is_fresh<T0>(reserve, clock);
+        let mut max_borrow_amount = amount;
+        if (amount == 18446744073709551615) {
+            max_borrow_amount = max_borrow_amount<T0>(market.rate_limiter, obligation, reserve, clock);
         };
-        let (v2, v3) = reserve::borrow_liquidity<T0, T1>(v1, arg4);
-        let v4 = v2;
-        obligation::borrow<T0>(v0, v1, arg3, v3);
+        let (balance_borrow_with_fee, borrow_amount_with_fee) = reserve::borrow_liquidity<T0, T1>(reserve, max_borrow_amount);
+        let v4 = balance_borrow_with_fee;
+        obligation::borrow<T0>(obligation, reserve, clock, borrow_amount_with_fee);
         rate_limiter::process_qty(
-            &mut arg0.rate_limiter,
-            clock::timestamp_ms(arg3) / 1000,
-            reserve::market_value_upper_bound<T0>(v1, decimal::from(v3))
+            &mut market.rate_limiter,
+            clock::timestamp_ms(clock) / 1000,
+            reserve::market_value_upper_bound<T0>(reserve, decimal::from(borrow_amount_with_fee))
         );
-        let v5 = BorrowEvent{
-            lending_market_id      : object::id_address<LendingMarket<T0>>(arg0), 
+        let borrow_event = BorrowEvent{
+            lending_market_id      , 
             coin_type              : type_name::get<T1>(), 
-            reserve_id             : object::id_address<Reserve<T0>>(v1), 
-            obligation_id          : object::id_address<Obligation<T0>>(v0), 
-            liquidity_amount       : v3, 
-            origination_fee_amount : v3 - balance::value<T1>(&v4),
+            reserve_id             : object::id_address<Reserve<T0>>(reserve), 
+            obligation_id          : object::id_address<Obligation<T0>>(obligation), 
+            liquidity_amount       : borrow_amount_with_fee, 
+            origination_fee_amount : borrow_amount_with_fee - balance::value<T1>(&v4),
         };
-        event::emit<BorrowEvent>(v5);
-        coin::from_balance<T1>(v4, arg5)
+        event::emit<BorrowEvent>(borrow_event);
+        coin::from_balance<T1>(v4, ctx)
     }
     
     public fun add_pool_reward<T0, T1>(
-        arg0: &LendingMarketOwnerCap<T0>, 
-        arg1: &mut LendingMarket<T0>, 
-        arg2: u64, 
-        arg3: bool, 
+        _: &LendingMarketOwnerCap<T0>, 
+        market: &mut LendingMarket<T0>, 
+        reserve_id: u64, 
+        deposit_rewards: bool, //false for borrow_rewards
         arg4: Coin<T1>, 
         arg5: u64, 
         arg6: u64, 
-        arg7: &Clock, 
-        arg8: &mut TxContext
+        clock: &Clock, 
+        ctx: &mut TxContext
     ) {
-        assert!(arg1.version == 3, 1);
-        let v0 = if (arg3) {
-            reserve::deposits_pool_reward_manager_mut<T0>(vector::borrow_mut<Reserve<T0>>(&mut arg1.reserves, arg2))
+        //TODO: fix version
+        assert!(market.version == 3, 1);
+        let pool_reward_manager = if (deposit_rewards) {
+            reserve::deposits_pool_reward_manager_mut<T0>(vector::borrow_mut<Reserve<T0>>(&mut market.reserves, reserve_id))
         } else {
-            reserve::borrows_pool_reward_manager_mut<T0>(vector::borrow_mut<Reserve<T0>>(&mut arg1.reserves, arg2))
+            reserve::borrows_pool_reward_manager_mut<T0>(vector::borrow_mut<Reserve<T0>>(&mut market.reserves, reserve_id))
         };
-        liquidity_mining::add_pool_reward<T1>(v0, coin::into_balance<T1>(arg4), arg5, arg6, arg7, arg8);
+        liquidity_mining::add_pool_reward<T1>(pool_reward_manager, coin::into_balance<T1>(arg4), arg5, arg6, clock, ctx);
     }
     
     public fun cancel_pool_reward<T0, T1>(
@@ -248,6 +253,7 @@ module suilend::lending_market {
     
     public fun forgive<T0, T1>(arg0: &LendingMarketOwnerCap<T0>, arg1: &mut LendingMarket<T0>, arg2: u64, arg3: ID, arg4: &Clock, arg5: u64) {
         assert!(arg1.version == 3, 1);
+        let lending_market_id = object::id_address<LendingMarket<T0>>(arg1);
         let v0 = object_table::borrow_mut<ID, Obligation<T0>>(&mut arg1.obligations, arg3);
         obligation::refresh<T0>(v0, &mut arg1.reserves, arg4);
         let v1 = vector::borrow_mut<Reserve<T0>>(&mut arg1.reserves, arg2);
@@ -255,7 +261,7 @@ module suilend::lending_market {
         let v2 = obligation::forgive<T0>(v0, v1, arg4, decimal::from(arg5));
         reserve::forgive_debt<T0>(v1, v2);
         let v3 = ForgiveEvent{
-            lending_market_id : object::id_address<LendingMarket<T0>>(arg1), 
+            lending_market_id , 
             coin_type         : type_name::get<T1>(), 
             reserve_id        : object::id_address<Reserve<T0>>(v1), 
             obligation_id     : object::id_address<Obligation<T0>>(v0), 
@@ -265,6 +271,7 @@ module suilend::lending_market {
     }
     
     public fun liquidate<T0, T1, T2>(arg0: &mut LendingMarket<T0>, arg1: ID, arg2: u64, arg3: u64, arg4: &Clock, arg5: &mut Coin<T1>, arg6: &mut TxContext) : (Coin<reserve::CToken<T0, T2>>, RateLimiterExemption<T0, T2>) {
+        let lending_market_id = object::id_address<LendingMarket<T0>>(arg0);
         assert!(arg0.version == 3, 1);
         assert!(coin::value<T1>(arg5) > 0, 2);
         let v0 = object_table::borrow_mut<ID, Obligation<T0>>(&mut arg0.obligations, arg1);
@@ -276,10 +283,10 @@ module suilend::lending_market {
         reserve::repay_liquidity<T0, T1>(v3, coin::into_balance<T1>(coin::split<T1>(arg5, decimal::ceil(v2), arg6)), v2);
         let v4 = vector::borrow_mut<Reserve<T0>>(&mut arg0.reserves, arg3);
         assert!(reserve::coin_type<T0>(v4) == type_name::get<T2>(), 3);
-        let v5 = reserve::withdraw_ctokens<T0, T2>(v4, v1);
+        let mut v5 = reserve::withdraw_ctokens<T0, T2>(v4, v1);
         let (v6, v7) = reserve::deduct_liquidation_fee<T0, T2>(v4, &mut v5);
         let v8 = LiquidateEvent{
-            lending_market_id       : object::id_address<LendingMarket<T0>>(arg0), 
+            lending_market_id       , 
             repay_reserve_id        : object::id_address<Reserve<T0>>(vector::borrow<Reserve<T0>>(&arg0.reserves, arg2)), 
             withdraw_reserve_id     : object::id_address<Reserve<T0>>(vector::borrow<Reserve<T0>>(&arg0.reserves, arg3)), 
             obligation_id           : object::id_address<Obligation<T0>>(v0), 
@@ -296,9 +303,35 @@ module suilend::lending_market {
     }
     
     fun max_borrow_amount<T0>(arg0: RateLimiter, arg1: &Obligation<T0>, arg2: &Reserve<T0>, arg3: &Clock) : u64 {
-        let v0 = 0x2::math::min(0x2::math::min(obligation::max_borrow_amount<T0>(arg1, arg2), reserve::max_borrow_amount<T0>(arg2)), decimal::floor(reserve::usd_to_token_amount_lower_bound<T0>(arg2, decimal::min(rate_limiter::remaining_outflow(&mut arg0, clock::timestamp_ms(arg3) / 1000), decimal::from(1000000000)))));
-        let v1 = decimal::floor(decimal::div(decimal::from(v0), decimal::add(decimal::from(1), reserve_config::borrow_fee(reserve::config<T0>(arg2)))));
-        let v2 = v1;
+        let mut arg0_copy = arg0;
+        let v0 = math::min(
+            math::min(
+                obligation::max_borrow_amount<T0>(arg1, arg2), 
+                reserve::max_borrow_amount<T0>(arg2)
+            ), 
+            decimal::floor(
+                reserve::usd_to_token_amount_lower_bound<T0>(
+                    arg2, 
+                    decimal::min(
+                        rate_limiter::remaining_outflow(
+                            &mut arg0_copy, 
+                            clock::timestamp_ms(arg3) / 1000
+                        ), 
+                    decimal::from(1000000000)
+                    )
+                )
+            )
+        );
+        let v1 = decimal::floor(
+            decimal::div(
+                decimal::from(v0), 
+                decimal::add(
+                    decimal::from(1), 
+                    reserve_config::borrow_fee(reserve::config<T0>(arg2))
+                )
+            )
+        );
+        let mut v2 = v1;
         if (v1 + decimal::ceil(decimal::mul(decimal::from(v1), reserve_config::borrow_fee(reserve::config<T0>(arg2)))) > v0 && v1 > 0) {
             v2 = v1 - 1;
         };
@@ -306,11 +339,30 @@ module suilend::lending_market {
     }
     
     fun max_withdraw_amount<T0>(arg0: RateLimiter, arg1: &Obligation<T0>, arg2: &Reserve<T0>, arg3: &Clock) : u64 {
-        0x2::math::min(0x2::math::min(obligation::max_withdraw_amount<T0>(arg1, arg2), decimal::floor(decimal::div(reserve::usd_to_token_amount_lower_bound<T0>(arg2, decimal::min(rate_limiter::remaining_outflow(&mut arg0, clock::timestamp_ms(arg3) / 1000), decimal::from(1000000000))), reserve::ctoken_ratio<T0>(arg2)))), reserve::max_redeem_amount<T0>(arg2))
+        let mut arg0_copy = arg0;
+        math::min(
+            math::min(
+                obligation::max_withdraw_amount<T0>(arg1, arg2), 
+                decimal::floor(
+                    decimal::div(
+                        reserve::usd_to_token_amount_lower_bound<T0>(
+                            arg2, 
+                            decimal::min(
+                                rate_limiter::remaining_outflow(&mut arg0_copy, clock::timestamp_ms(arg3) / 1000), 
+                                decimal::from(1000000000)
+                            )
+                        ), 
+                        reserve::ctoken_ratio<T0>(arg2)
+                    )
+                )
+            ), 
+            reserve::max_redeem_amount<T0>(arg2)
+        )
     }
     
     public fun repay<T0, T1>(arg0: &mut LendingMarket<T0>, arg1: u64, arg2: ID, arg3: &Clock, arg4: &mut Coin<T1>, arg5: &mut TxContext) {
         assert!(arg0.version == 3, 1);
+        let lending_market_id = object::id_address<LendingMarket<T0>>(arg0);
         let v0 = object_table::borrow_mut<ID, Obligation<T0>>(&mut arg0.obligations, arg2);
         let v1 = vector::borrow_mut<Reserve<T0>>(&mut arg0.reserves, arg1);
         assert!(reserve::coin_type<T0>(v1) == type_name::get<T1>(), 3);
@@ -318,7 +370,7 @@ module suilend::lending_market {
         let v2 = obligation::repay<T0>(v0, v1, arg3, decimal::from(coin::value<T1>(arg4)));
         reserve::repay_liquidity<T0, T1>(v1, coin::into_balance<T1>(coin::split<T1>(arg4, decimal::ceil(v2), arg5)), v2);
         let v3 = RepayEvent{
-            lending_market_id : object::id_address<LendingMarket<T0>>(arg0), 
+            lending_market_id , 
             coin_type         : type_name::get<T1>(), 
             reserve_id        : object::id_address<Reserve<T0>>(v1), 
             obligation_id     : object::id_address<Obligation<T0>>(v0), 
@@ -343,16 +395,18 @@ module suilend::lending_market {
     public fun deposit_liquidity_and_mint_ctokens<T0, T1>(arg0: &mut LendingMarket<T0>, arg1: u64, arg2: &Clock, arg3: Coin<T1>, arg4: &mut TxContext) : Coin<reserve::CToken<T0, T1>> {
         assert!(arg0.version == 3, 1);
         assert!(coin::value<T1>(&arg3) > 0, 2);
+        let liquidity_amount = coin::value<T1>(&arg3);
+        let lending_market_id = object::id_address<LendingMarket<T0>>(arg0);
         let v0 = vector::borrow_mut<Reserve<T0>>(&mut arg0.reserves, arg1);
         assert!(reserve::coin_type<T0>(v0) == type_name::get<T1>(), 3);
         reserve::compound_interest<T0>(v0, arg2);
         let v1 = reserve::deposit_liquidity_and_mint_ctokens<T0, T1>(v0, coin::into_balance<T1>(arg3));
         assert!(balance::value<reserve::CToken<T0, T1>>(&v1) > 0, 2);
         let v2 = MintEvent{
-            lending_market_id : object::id_address<LendingMarket<T0>>(arg0), 
+            lending_market_id , 
             coin_type         : type_name::get<T1>(), 
             reserve_id        : object::id_address<Reserve<T0>>(v0), 
-            liquidity_amount  : coin::value<T1>(&arg3), 
+            liquidity_amount  , 
             ctoken_amount     : balance::value<reserve::CToken<T0, T1>>(&v1),
         };
         event::emit<MintEvent>(v2);
@@ -369,34 +423,38 @@ module suilend::lending_market {
     public fun withdraw_ctokens<T0, T1>(arg0: &mut LendingMarket<T0>, arg1: u64, arg2: &ObligationOwnerCap<T0>, arg3: &Clock, arg4: u64, arg5: &mut TxContext) : Coin<reserve::CToken<T0, T1>> {
         assert!(arg0.version == 3, 1);
         assert!(arg4 > 0, 2);
+        let lending_market_id = object::id_address<LendingMarket<T0>>(arg0);
         let v0 = object_table::borrow_mut<ID, Obligation<T0>>(&mut arg0.obligations, arg2.obligation_id);
         obligation::refresh<T0>(v0, &mut arg0.reserves, arg3);
         let v1 = vector::borrow_mut<Reserve<T0>>(&mut arg0.reserves, arg1);
         assert!(reserve::coin_type<T0>(v1) == type_name::get<T1>(), 3);
+        let mut max_withdraw_amount = arg4;
         if (arg4 == 18446744073709551615) {
-            arg4 = max_withdraw_amount<T0>(arg0.rate_limiter, v0, v1, arg3);
+            max_withdraw_amount = max_withdraw_amount<T0>(arg0.rate_limiter, v0, v1, arg3);
         };
-        obligation::withdraw<T0>(v0, v1, arg3, arg4);
+        obligation::withdraw<T0>(v0, v1, arg3, max_withdraw_amount);
         let v2 = WithdrawEvent{
-            lending_market_id : object::id_address<LendingMarket<T0>>(arg0), 
+            lending_market_id , 
             coin_type         : type_name::get<T1>(), 
             reserve_id        : object::id_address<Reserve<T0>>(v1), 
             obligation_id     : object::id_address<Obligation<T0>>(v0), 
-            ctoken_amount     : arg4,
+            ctoken_amount     : max_withdraw_amount,
         };
         event::emit<WithdrawEvent>(v2);
-        coin::from_balance<reserve::CToken<T0, T1>>(reserve::withdraw_ctokens<T0, T1>(v1, arg4), arg5)
+        coin::from_balance<reserve::CToken<T0, T1>>(reserve::withdraw_ctokens<T0, T1>(v1, max_withdraw_amount), arg5)
     }
     
     public fun add_reserve<T0, T1>(arg0: &LendingMarketOwnerCap<T0>, arg1: &mut LendingMarket<T0>, arg2: &pyth::price_info::PriceInfoObject, arg3: reserve_config::ReserveConfig, arg4: &coin::CoinMetadata<T1>, arg5: &Clock, arg6: &mut TxContext) {
         assert!(arg1.version == 3, 1);
         assert!(reserve_array_index<T0, T1>(arg1) == vector::length<Reserve<T0>>(&arg1.reserves), 4);
-        vector::push_back<Reserve<T0>>(&mut arg1.reserves, reserve::create_reserve<T0, T1>(object::id<LendingMarket<T0>>(arg1), arg3, vector::length<Reserve<T0>>(&arg1.reserves), arg4, arg2, arg5, arg6));
+        let obj_id = object::id<LendingMarket<T0>>(arg1);
+        let vector_length = vector::length<Reserve<T0>>(&arg1.reserves);
+        vector::push_back<Reserve<T0>>(&mut arg1.reserves, reserve::create_reserve<T0, T1>(obj_id, arg3, vector_length, arg4, arg2, arg5, arg6));
     }
     
     public fun claim_rewards_and_deposit<T0, T1>(arg0: &mut LendingMarket<T0>, arg1: ID, arg2: &Clock, arg3: u64, arg4: u64, arg5: bool, arg6: u64, arg7: &mut TxContext) {
         assert!(arg0.version == 3, 1);
-        let v0 = claim_rewards_by_obligation_id<T0, T1>(arg0, arg1, arg2, arg3, arg4, arg5, true, arg7);
+        let mut v0 = claim_rewards_by_obligation_id<T0, T1>(arg0, arg1, arg2, arg3, arg4, arg5, true, arg7);
         if (decimal::gt(obligation::borrowed_amount<T0, T1>(0x2::object_table::borrow<ID, Obligation<T0>>(&arg0.obligations, arg1)), decimal::from(0))) {
             repay<T0, T1>(arg0, arg6, arg1, arg2, &mut v0, arg7);
         };
@@ -405,7 +463,8 @@ module suilend::lending_market {
         if (decimal::floor(decimal::div(decimal::from(coin::value<T1>(&v0)), reserve::ctoken_ratio<T0>(v1))) == 0) {
             0x2::transfer::public_transfer<Coin<T1>>(v0, arg0.fee_receiver);
         } else {
-            deposit_ctokens_into_obligation_by_id<T0, T1>(arg0, arg6, arg1, arg2, reserve::deposit_liquidity_and_mint_ctokens<T0, T1>(arg0, arg6, arg2, v0, arg7), arg7);
+            let coin_reserve = deposit_liquidity_and_mint_ctokens<T0, T1>(arg0, arg6, arg2, v0, arg7);
+            deposit_ctokens_into_obligation_by_id<T0, T1>(arg0, arg6, arg1, arg2, coin_reserve, arg7);
         };
     }
     
@@ -414,6 +473,7 @@ module suilend::lending_market {
         let v0 = type_name::get<T1>();
         let v1 = 0x1::ascii::string(b"34fe4f3c9e450fed4d0a3c587ed842eec5313c30c3cc3c0841247c49425e246b::suilend_point::SUILEND_POINT");
         assert!(0x1::type_name::borrow_string(&v0) != &v1, 6);
+        let lending_market_id = object::id_address<LendingMarket<T0>>(arg0);
         let v2 = object_table::borrow_mut<ID, Obligation<T0>>(&mut arg0.obligations, arg1);
         let v3 = vector::borrow_mut<Reserve<T0>>(&mut arg0.reserves, arg3);
         reserve::compound_interest<T0>(v3, arg2);
@@ -428,7 +488,7 @@ module suilend::lending_market {
         let v5 = coin::from_balance<T1>(obligation::claim_rewards<T0, T1>(v2, v4, arg2, arg4), arg7);
         let v6 = liquidity_mining::pool_reward_id(v4, arg4);
         let v7 = ClaimRewardEvent{
-            lending_market_id : object::id_address<LendingMarket<T0>>(arg0), 
+            lending_market_id , 
             reserve_id        : object::id_address<Reserve<T0>>(v3), 
             obligation_id     : object::id_address<Obligation<T0>>(v2), 
             is_deposit_reward : arg5, 
@@ -466,11 +526,12 @@ module suilend::lending_market {
     fun deposit_ctokens_into_obligation_by_id<T0, T1>(arg0: &mut LendingMarket<T0>, arg1: u64, arg2: ID, arg3: &Clock, arg4: Coin<reserve::CToken<T0, T1>>, arg5: &mut TxContext) {
         assert!(arg0.version == 3, 1);
         assert!(coin::value<reserve::CToken<T0, T1>>(&arg4) > 0, 2);
+        let lending_market_id = object::id_address<LendingMarket<T0>>(arg0);
         let v0 = vector::borrow_mut<Reserve<T0>>(&mut arg0.reserves, arg1);
         assert!(reserve::coin_type<T0>(v0) == type_name::get<T1>(), 3);
         let v1 = object_table::borrow_mut<ID, Obligation<T0>>(&mut arg0.obligations, arg2);
         let v2 = DepositEvent{
-            lending_market_id : object::id_address<LendingMarket<T0>>(arg0), 
+            lending_market_id , 
             coin_type         : type_name::get<T1>(), 
             reserve_id        : object::id_address<Reserve<T0>>(v0), 
             obligation_id     : object::id_address<Obligation<T0>>(v1), 
@@ -498,12 +559,14 @@ module suilend::lending_market {
         assert!(arg0.version == 3, 1);
         assert!(coin::value<reserve::CToken<T0, T1>>(&arg3) > 0, 2);
         let v0 = coin::value<reserve::CToken<T0, T1>>(&arg3);
+        let lending_market_id = object::id_address<LendingMarket<T0>>(arg0);
         let v1 = vector::borrow_mut<Reserve<T0>>(&mut arg0.reserves, arg1);
         assert!(reserve::coin_type<T0>(v1) == type_name::get<T1>(), 3);
         reserve::compound_interest<T0>(v1, arg2);
-        let v2 = false;
+        let mut v2 = false;
         if (0x1::option::is_some<RateLimiterExemption<T0, T1>>(&arg4)) {
-            if (0x1::option::borrow_mut<RateLimiterExemption<T0, T1>>(&mut arg4).amount >= v0) {
+            let mut temp = arg4;
+            if (0x1::option::borrow_mut<RateLimiterExemption<T0, T1>>(&mut temp).amount >= v0) {
                 v2 = true;
             };
         };
@@ -513,7 +576,7 @@ module suilend::lending_market {
         let v3 = reserve::redeem_ctokens<T0, T1>(v1, coin::into_balance<reserve::CToken<T0, T1>>(arg3));
         assert!(balance::value<T1>(&v3) > 0, 2);
         let v4 = RedeemEvent{
-            lending_market_id : object::id_address<LendingMarket<T0>>(arg0), 
+            lending_market_id , 
             coin_type         : type_name::get<T1>(), 
             reserve_id        : object::id_address<Reserve<T0>>(v1), 
             ctoken_amount     : v0, 
@@ -529,7 +592,7 @@ module suilend::lending_market {
     }
     
     fun reserve_array_index<T0, T1>(arg0: &LendingMarket<T0>) : u64 {
-        let v0 = 0;
+        let mut v0 = 0;
         while (v0 < vector::length<Reserve<T0>>(&arg0.reserves)) {
             if (reserve::coin_type<T0>(vector::borrow<Reserve<T0>>(&arg0.reserves, v0)) == type_name::get<T1>()) {
                 return v0
